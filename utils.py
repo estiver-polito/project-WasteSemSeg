@@ -18,6 +18,20 @@ def adjust_learning_rate(lr, decay, optimizer, cur_epoch, n_epochs):
     new_lr = lr * (decay ** (cur_epoch // n_epochs))
     for param_group in optimizer.param_groups:
         param_group['lr'] = new_lr
+        
+# def calculate_mean_iu(predictions, gts, num_classes):
+#     sum_iu = 0
+#.    iou_classes = [0.0] * num_classes
+#     for i in range(num_classes):
+#         n_ii = t_i = sum_n_ji = 1e-9
+#         for p, gt in zip(predictions, gts):
+#             n_ii += np.sum(gt[p == i] == i)
+#             t_i += np.sum(gt == i)
+#             sum_n_ji += np.sum(p == i)
+#         sum_iu += float(n_ii) / (t_i + sum_n_ji - n_ii)
+#         iou_classes[i] = float(n_ii) / (t_i + sum_n_ji - n_ii)
+#     mean_iu = sum_iu / num_classes
+#     return mean_iu
 
 def calculate_mean_iu(predictions, gts, num_classes):
     sum_iu = 0
