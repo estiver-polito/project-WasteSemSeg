@@ -31,7 +31,7 @@ def adjust_learning_rate(lr, decay, optimizer, cur_epoch, n_epochs):
 #         sum_iu += float(n_ii) / (t_i + sum_n_ji - n_ii)
 #         iou_classes[i] = float(n_ii) / (t_i + sum_n_ji - n_ii)
 #     mean_iu = sum_iu / num_classes
-#     return mean_iu
+#     return mean_iu, iou_classes
 
 def calculate_mean_iu(predictions, gts, num_classes):
     sum_iu = 0
