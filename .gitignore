@@ -1,0 +1,7 @@
+awesome-semantic-segmentation-pytorch/
+logs/
+.vscode/
+dataset.zip
+__MACOSX/
+__pycache__/
+exp/
