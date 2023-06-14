@@ -147,7 +147,7 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
     label_batches = []
     iou_ = 0.0
     
-    iou_sum_classes = [1e-9] * cfg.DATA.NUM_CLASSES
+    iou_sum_classes = [0.0] * cfg.DATA.NUM_CLASSES
     metric.reset()
     for vi, data in enumerate(val_loader, 0):
         inputs, labels = data
@@ -197,7 +197,7 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
         class_names = ['none','paper', 'bottle', 'alluminium', 'Nylon']
         for i, class_name in enumerate(class_names):
             #print(f'Mean IoU for {class_name}: {IoU[i]}')
-            print(f'Mean IoU for {class_name}: {mean_iu_classes[i]}')
+            print(f'Mean IoU for {class_name}: {mean_iu_classes[i]:.6f}')
         print('[mean iu %.4f]' % (iou_/len(val_loader) ))
         
    

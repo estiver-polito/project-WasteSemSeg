@@ -37,17 +37,19 @@ def calculate_mean_iu(predictions, gts, num_classes):
     sum_iu = 0
     iou_classes = [0.0] * num_classes
     for i in range(num_classes):
+        
         n_ii = t_i = sum_n_ji = 1e-9
         for image,(p, gt) in enumerate(zip(predictions, gts)):
-            n_ii += np.sum(gt[p == i] == i)
-            t_i += np.sum(gt == i)
-            sum_n_ji += np.sum(p == i)
-            sum_iu += float(n_ii) /   (t_i + sum_n_ji - n_ii) if not  float(n_ii) == (t_i + sum_n_ji - n_ii) == 1e-9 else 0
+            if i in np.unique(gt):
+                n_ii += np.sum(gt[p == i] == i)
+                t_i += np.sum(gt == i)
+                sum_n_ji += np.sum(p == i)
+                #sum_iu += float(n_ii) /  (t_i + sum_n_ji - n_ii) #if not  float(n_ii) == (t_i + sum_n_ji - n_ii) == 1e-9 else 0
         
         iou_classes[i] = float(n_ii) / (t_i + sum_n_ji - n_ii)
 
-    mean_iu = sum_iu / num_classes
-    return mean_iu,iou_classes
+    #mean_iu = sum_iu / num_classes
+    return np.mean(iou_classes),iou_classes
 
 class CrossEntropyLoss2d(nn.Module):
     def __init__(self, weight=None, size_average=True):
