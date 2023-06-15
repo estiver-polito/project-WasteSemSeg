@@ -1,7 +1,7 @@
 #%%
 import os
 import random
-
+import copy
 import torch
 from torch import optim
 from torch.autograd import Variable
@@ -20,6 +20,8 @@ from utils import *
 from timer import Timer
 from matplotlib import pyplot as plt
 from loss import *
+from ptflops import get_model_complexity_info
+
 from score import SegmentationMetric
 import matplotlib.image as mpimg
 import pdb
@@ -32,6 +34,16 @@ writer = SummaryWriter(cfg.TRAIN.EXP_PATH+ '/' + exp_name)
 pil_to_tensor = standard_transforms.ToTensor()
 train_loader, val_loader, restore_transform = loading_data()
 metric = SegmentationMetric(cfg.DATA.NUM_CLASSES)
+class_names = ['none','paper', 'bottle', 'alluminium', 'Nylon']
+best_results =  {
+  "none": 0.0,
+  "paper": 0.0,
+  "bottle": 0.0,
+  "alluminium": 0.0,
+  "Nylon": 0.0,
+  "total": 0.0,
+  "model":[]
+}
 
 
 def check_image(image,mask):
@@ -103,6 +115,35 @@ def main():
         _t['val time'].toc(average=False)
         print('val time of  epoch {}: {:.2f}s'.format(epoch,_t['val time'].diff))
 
+        benchmark(next(iter(val_loader))[0].shape)
+    
+
+def benchmark(dsize):
+
+    total_flops, _ = get_model_complexity_info(best_results['model'], (3, 224, 448), as_strings=True,
+                                        print_per_layer_stat=False, verbose=False,flops_units="GMac")
+   
+    
+    param_size = 0
+    for param in best_results['model'].parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in best_results['model'].buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+
+    print("Best Model ")
+    if cfg.DATA.NUM_CLASSES > 1:
+        for v in list(best_results.keys())[:-1]:
+            print(f'Mean IoU for {v}: {best_results[v]:.6f}')
+    
+    print('[mean iu %.4f]' % (best_results['total']))
+    print("Performance {} GFlops".format(float(total_flops.split(" ")[0]) * 2))
+    print("Number Parameters {}".format(param_size))
+    print("Size Model {} MB".format((param_size + buffer_size) / 1024**2))
+
+
+    
 
 def train(train_loader, net, criterion, optimizer, epoch):
     
@@ -174,6 +215,8 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
             x , y = calculate_mean_iu(outputs.argmax(dim=1).data.cpu().numpy(), labels.data.cpu().numpy(), cfg.DATA.NUM_CLASSES)
             iou_ += x
             iou_sum_classes = [sum(x) for x in zip(iou_sum_classes, y)]
+
+            
              
             
             # for c in range(cfg.DATA.NUM_CLASSES):
@@ -187,8 +230,15 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
 
     #IoU,mIoU = metric.get()
     if cfg.DATA.NUM_CLASSES == 1:
-        mean_iu = iou_ / len(val_loader)
-        print('[mean iu %.4f]' % (mean_iu))
+        
+        print('[mean iu %.4f]' % (iou_ / len(val_loader)))
+
+        if iou_/len(val_loader) > best_results["total"]:
+            
+            best_results["total"] = iou_/len(val_loader)
+            best_results["model"] = net
+
+        
         
     else:
         #mean_iu_classes = [x for x in IoU]
@@ -199,7 +249,18 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
             #print(f'Mean IoU for {class_name}: {IoU[i]}')
             print(f'Mean IoU for {class_name}: {mean_iu_classes[i]:.6f}')
         print('[mean iu %.4f]' % (iou_/len(val_loader) ))
+    
+        if iou_/len(val_loader) > best_results["total"]:
+            best_iou = iou_/len(val_loader)
         
+            for i,v in enumerate(list(best_results.keys())[:-2]):
+                best_results[v] = mean_iu_classes[i]
+
+            best_results["total"] = iou_/len(val_loader)
+            best_results["model"] = net
+
+            # flops, params = get_model_complexity_info(net, (3, 224, 448), as_strings=True,
+            #                             print_per_layer_stat=False, verbose=False)
    
     net.train()
     criterion.cuda()    
