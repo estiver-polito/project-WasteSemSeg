@@ -10,11 +10,11 @@ __all__ = ['BiSeNet', 'get_bisenet', 'get_bisenet_resnet18_citys']
 
 
 class BiSeNet(nn.Module):
-    def __init__(self, nclass, aux=False, jpu=False, pretrained_base=True, **kwargs):
+    def __init__(self, nclass, aux=False, **kwargs):
         super(BiSeNet, self).__init__()
         self.aux = aux
         self.spatial_path = SpatialPath(3, 128, **kwargs)
-        self.context_path = xception39()
+        self.context_path = ContextPath(**kwargs)
         self.ffm = FeatureFusion(256, 256, 4, **kwargs)
         self.head = _BiSeHead(256, 64, nclass, **kwargs)
         if aux:
@@ -25,11 +25,13 @@ class BiSeNet(nn.Module):
                          ['spatial_path', 'context_path', 'ffm', 'head', 'auxlayer1', 'auxlayer2'] if aux else [
                              'spatial_path', 'context_path', 'ffm', 'head'])
 
+
+    
     def forward(self, x):
         size = x.size()[2:]
         spatial_out = self.spatial_path(x)
         context_out = self.context_path(x)
-        fusion_out = self.ffm(spatial_out, context_out[-1])
+        fusion_out = self.ffm(spatial_out, context_out[1])
         outputs = []
         x = self.head(fusion_out)
         x = F.interpolate(x, size, mode='bilinear', align_corners=True)
@@ -60,6 +62,7 @@ class _BiSeHead(nn.Module):
 
 
 class SpatialPath(nn.Module):
+
     """Spatial path"""
 
     def __init__(self, in_channels, out_channels, norm_layer=nn.BatchNorm2d, **kwargs):
@@ -113,8 +116,6 @@ class AttentionRefinmentModule(nn.Module):
         return x
 
 
-
-
 class FeatureFusion(nn.Module):
     def __init__(self, in_channels, out_channels, reduction=1, norm_layer=nn.BatchNorm2d, **kwargs):
         super(FeatureFusion, self).__init__()
@@ -133,4 +134,42 @@ class FeatureFusion(nn.Module):
         out = out + out * attention
         return out
 
+class ContextPath(nn.Module):
+    def __init__(self, norm_layer=nn.BatchNorm2d, **kwargs):
+        super(ContextPath, self).__init__()
+       
+        
+        self.backbone = xception39()
+      
+
+        inter_channels = 128                    #256 xception39
+        self.global_context = _GlobalAvgPooling(256, inter_channels, norm_layer)
+
+        self.arms = nn.ModuleList(
+            [AttentionRefinmentModule(256, inter_channels, norm_layer, **kwargs),
+             AttentionRefinmentModule(128, inter_channels, norm_layer, **kwargs)]
+        )
+        self.refines = nn.ModuleList(
+            [ConvBNReLU(inter_channels, inter_channels, 3, 1, 1, norm_layer=norm_layer),
+             ConvBNReLU(inter_channels, inter_channels, 3, 1, 1, norm_layer=norm_layer)]
+        )
+
+
+    def forward(self, x):
+        context_blocks = self.backbone(x)
+
+        context_blocks.reverse()
+
+        global_context = self.global_context(context_blocks[0])
+        last_feature = global_context
+        context_outputs = []
+        for i, (feature, arm, refine) in enumerate(zip(context_blocks[:2], self.arms, self.refines)):
+            feature = arm(feature)
+            feature += last_feature
+            last_feature = F.interpolate(feature, size=context_blocks[i + 1].size()[2:],
+                                         mode='bilinear', align_corners=True)
+            last_feature = refine(last_feature)
+            context_outputs.append(last_feature)
+
+        return context_outputs
 

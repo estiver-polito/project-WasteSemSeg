@@ -14,6 +14,7 @@ from tensorboardX import SummaryWriter
 
 from model import ENet
 from icnet import ICNet
+from bisenet_v2 import BiSeNet
 from config import cfg
 from loading_data import loading_data
 from utils import *
@@ -76,8 +77,10 @@ def main():
     if cfg.TRAIN.STAGE=='all':
         if cfg.MODEL.MODEL == "icnet":
             net = ICNet(cfg.DATA.NUM_CLASSES)
-        else:    
+        elif cfg.MODEL.MODEL == "enet":    
             net = ENet(only_encode=False)
+        elif cfg.MODEL.MODEL == "bisenet":
+            net = BiSeNet(cfg.DATA.NUM_CLASSES,True)
         if cfg.TRAIN.PRETRAINED_ENCODER != '':
             encoder_weight = torch.load(cfg.TRAIN.PRETRAINED_ENCODER)
             del encoder_weight['classifier.bias']
@@ -95,11 +98,13 @@ def main():
    
     net.train()
 
-    if cfg.MODEL.MODEL in ["enet"]:
+    if cfg.MODEL.MODEL == "enet":
         criterion =  torch.nn.CrossEntropyLoss().to(device) if cfg.DATA.NUM_CLASSES > 1 else torch.nn.BCEWithLogitsLoss().to(device)
-    else:
+    elif cfg.MODEL.MODEL == "icnet":
         criterion =  Multiclass_ICNetLoss().to(device)  if cfg.DATA.NUM_CLASSES > 1 else Binary_ICNetLoss().to(device)
-
+    elif cfg.MODEL.MODEL == "bisenet":
+        criterion = MixSoftmaxCrossEntropyLoss(True).to(device)
+    
 
     optimizer = optim.Adam(net.parameters(), lr=cfg.TRAIN.LR, weight_decay=cfg.TRAIN.WEIGHT_DECAY)
     scheduler = StepLR(optimizer, step_size=cfg.TRAIN.NUM_EPOCH_LR_DECAY, gamma=cfg.TRAIN.LR_DECAY)
@@ -115,7 +120,7 @@ def main():
         _t['val time'].toc(average=False)
         print('val time of  epoch {}: {:.2f}s'.format(epoch,_t['val time'].diff))
 
-        benchmark(next(iter(val_loader))[0].shape)
+    benchmark(next(iter(val_loader))[0].shape)
     
 
 def benchmark(dsize):
