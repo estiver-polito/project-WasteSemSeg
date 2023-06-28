@@ -134,6 +134,6 @@ class ICNet(nn.Module):
         # 1 -> 1/4 -> 1/8 -> 1/16
         outs.reverse()
 
-        return outs
+        return tuple(outs)
 
 

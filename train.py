@@ -1,5 +1,6 @@
 #%%
 import os
+import sys
 import random
 import copy
 import torch
@@ -22,29 +23,48 @@ from timer import Timer
 from matplotlib import pyplot as plt
 from loss import *
 from ptflops import get_model_complexity_info
+import neptune
+from neptune_pytorch import NeptuneLogger
 
 from score import SegmentationMetric
 import matplotlib.image as mpimg
 import pdb
+from neptune.utils import stringify_unsupported
+
+
 
 exp_name = cfg.TRAIN.EXP_NAME
 device = ""
 log_txt = cfg.TRAIN.EXP_LOG_PATH + '/' + exp_name + '.txt'
 writer = SummaryWriter(cfg.TRAIN.EXP_PATH+ '/' + exp_name)
+tipo= "multiclass" if cfg.DATA.NUM_CLASSES > 1 else "binary"  
+
+run = neptune.init_run(
+    custom_run_id= "{}_{}_{}".format(cfg.CONFIG.MODEL,tipo,cfg.TRAIN.MAX_EPOCH),
+    project="stiver/waste-segmentation",  # replace with your own (see instructions below)
+    api_token=sys.argv[1],
+)
+
+
+
+
 
 pil_to_tensor = standard_transforms.ToTensor()
 train_loader, val_loader, restore_transform = loading_data()
 metric = SegmentationMetric(cfg.DATA.NUM_CLASSES)
 class_names = ['none','paper', 'bottle', 'alluminium', 'Nylon']
+
 best_results =  {
   "none": 0.0,
   "paper": 0.0,
   "bottle": 0.0,
   "alluminium": 0.0,
   "Nylon": 0.0,
-  "total": 0.0,
-  "model":[]
+  "total": 0.0
 }
+
+
+
 
 
 def check_image(image,mask):
@@ -75,11 +95,11 @@ def main():
     #et = ENet(only_encode=True)
     #net = net.to("cpu")
     if cfg.TRAIN.STAGE=='all':
-        if cfg.MODEL.MODEL == "icnet":
+        if cfg.CONFIG.MODEL == "icnet":
             net = ICNet(cfg.DATA.NUM_CLASSES)
-        elif cfg.MODEL.MODEL == "enet":    
+        elif cfg.CONFIG.MODEL == "enet":    
             net = ENet(only_encode=False)
-        elif cfg.MODEL.MODEL == "bisenet":
+        elif cfg.CONFIG.MODEL == "bisenet":
             net = BiSeNet(cfg.DATA.NUM_CLASSES,True)
         if cfg.TRAIN.PRETRAINED_ENCODER != '':
             encoder_weight = torch.load(cfg.TRAIN.PRETRAINED_ENCODER)
@@ -95,14 +115,19 @@ def main():
         net = torch.nn.DataParallel(net, device_ids=cfg.TRAIN.GPU_ID).cuda()
     else:
         net=net.to(device)
-   
+
+    global npt_logger
+    npt_logger = NeptuneLogger(run, model=net, log_model_diagram=True, log_parameters=True)
+    run[npt_logger.base_namespace]["hyperparams"] = stringify_unsupported(cfg)
+
+    
     net.train()
 
-    if cfg.MODEL.MODEL == "enet":
+    if cfg.CONFIG.MODEL == "enet":
         criterion =  torch.nn.CrossEntropyLoss().to(device) if cfg.DATA.NUM_CLASSES > 1 else torch.nn.BCEWithLogitsLoss().to(device)
-    elif cfg.MODEL.MODEL == "icnet":
+    elif cfg.CONFIG.MODEL == "icnet":
         criterion =  Multiclass_ICNetLoss().to(device)  if cfg.DATA.NUM_CLASSES > 1 else Binary_ICNetLoss().to(device)
-    elif cfg.MODEL.MODEL == "bisenet":
+    elif cfg.CONFIG.MODEL == "bisenet":
         criterion = MixSoftmaxCrossEntropyLoss(True).to(device)
     
 
@@ -124,33 +149,44 @@ def main():
     
 
 def benchmark(dsize):
+    
 
-    total_flops, _ = get_model_complexity_info(best_results['model'], (3, 224, 448), as_strings=True,
+    total_flops, _ = get_model_complexity_info(npt_logger.model, (3, 224, 448), as_strings=True,
                                         print_per_layer_stat=False, verbose=False,flops_units="GMac")
    
     
     param_size = 0
-    for param in best_results['model'].parameters():
+    for param in npt_logger.model.parameters():
         param_size += param.nelement() * param.element_size()
     buffer_size = 0
-    for buffer in best_results['model'].buffers():
+    for buffer in npt_logger.model.buffers():
         buffer_size += buffer.nelement() * buffer.element_size()
 
 
-    print("Best Model ")
     if cfg.DATA.NUM_CLASSES > 1:
         for v in list(best_results.keys())[:-1]:
             print(f'Mean IoU for {v}: {best_results[v]:.6f}')
-    
-    print('[mean iu %.4f]' % (best_results['total']))
-    print("Performance {} GFlops".format(float(total_flops.split(" ")[0]) * 2))
-    print("Number Parameters {}".format(param_size))
-    print("Size Model {} MB".format((param_size + buffer_size) / 1024**2))
+
+    features ={
+        "performance":"{} GFlops".format(float(total_flops.split(" ")[0]) * 2),
+        "Number_Parameters": param_size,
+        "Size_Model": "{} MB".format((param_size + buffer_size) / 1024**2)
+    }
+
+    run[npt_logger.base_namespace]["best-results"] = stringify_unsupported(best_results)
+    run[npt_logger.base_namespace]["model-features"] = stringify_unsupported(features)
+    del run["training/parameters/"]
+    run.stop
+    # print('[mean iu %.4f]' % (best_results['total']))
+    # print("Performance {} GFlops".format(float(total_flops.split(" ")[0]) * 2))
+    # print("Number Parameters {}".format(param_size))
+    # print("Size Model {} MB".format((param_size + buffer_size) / 1024**2))
 
 
     
 
 def train(train_loader, net, criterion, optimizer, epoch):
+    mean_loss=0.0
     
     for i, data in enumerate(train_loader, 0):
         inputs, labels = data
@@ -162,7 +198,7 @@ def train(train_loader, net, criterion, optimizer, epoch):
 
         optimizer.zero_grad()
         outputs = net(inputs)
-        if cfg.MODEL.MODEL == "enet" and cfg.DATA.NUM_CLASSES == 1 :
+        if cfg.CONFIG.MODEL == "enet" and cfg.DATA.NUM_CLASSES == 1 :
             loss = criterion(outputs, labels.unsqueeze(1).float())
         else:
             loss = criterion(outputs, labels)
@@ -177,10 +213,14 @@ def train(train_loader, net, criterion, optimizer, epoch):
         # loss = criterion(pred_sub4, target_sub4)
         # loss += criterion(pred_sub8, target_sub8)
         # loss += criterion(pred_sub16, target_sub16)
+   
+        mean_loss += loss
         
         loss.backward()
         optimizer.step()
-        print(f"{i+1}/{len(train_loader)}")
+        #print(f"{i+1}/{len(train_loader)}")
+
+    run[npt_logger.base_namespace]["train/epoch/loss"].append(mean_loss/len(train_loader))
         
     
 
@@ -195,7 +235,7 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
     
     iou_sum_classes = [0.0] * cfg.DATA.NUM_CLASSES
     metric.reset()
-    for vi, data in enumerate(val_loader, 0):
+    for i, data in enumerate(val_loader, 0):
         inputs, labels = data
 
         inputs = inputs.to(device)
@@ -205,7 +245,7 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
         # labels = Variable(labels, volatile=True).cuda()
         outputs = net(inputs)
         
-        if not cfg.MODEL.MODEL == "enet":
+        if not cfg.CONFIG.MODEL == "enet":
             outputs = outputs[0]
         
         #metric.update(outputs, labels)
@@ -221,18 +261,6 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
             iou_ += x
             iou_sum_classes = [sum(x) for x in zip(iou_sum_classes, y)]
 
-            
-             
-            
-            # for c in range(cfg.DATA.NUM_CLASSES):
-            # # predmask
-            #     pred_mask = (outputs.argmax(dim=1) == c).cpu().numpy()
-            #     labels_mask = (labels == c).cpu().numpy()
-            #     class_iou = calculate_mean_iu(pred_mask, labels_mask, 2)
-            #     iou_sum_classes[c] += class_iou
-
-
-
     #IoU,mIoU = metric.get()
     if cfg.DATA.NUM_CLASSES == 1:
         
@@ -241,10 +269,10 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
         if iou_/len(val_loader) > best_results["total"]:
             
             best_results["total"] = iou_/len(val_loader)
-            best_results["model"] = net
+            best_model = net
+            
+            npt_logger.save_model("model")
 
-        
-        
     else:
         #mean_iu_classes = [x for x in IoU]
         mean_iu_classes = [x / len(val_loader) for x in iou_sum_classes]
@@ -258,15 +286,25 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
         if iou_/len(val_loader) > best_results["total"]:
             best_iou = iou_/len(val_loader)
         
-            for i,v in enumerate(list(best_results.keys())[:-2]):
+            for i,v in enumerate(list(best_results.keys())[:-1]):
                 best_results[v] = mean_iu_classes[i]
 
             best_results["total"] = iou_/len(val_loader)
-            best_results["model"] = net
+            
+            npt_logger.save_model("model")
+            
+            
 
             # flops, params = get_model_complexity_info(net, (3, 224, 448), as_strings=True,
             #                             print_per_layer_stat=False, verbose=False)
-   
+    
+    run[npt_logger.base_namespace]["validation/epoch/mean_iou"].append(iou_/len(val_loader))
+    
+    if cfg.DATA.NUM_CLASSES > 1:
+        for i,v in enumerate(list(best_results.keys())[:-1]):
+            run[npt_logger.base_namespace]["validation/epoch/{}_iou".format(v)].append(mean_iu_classes[i])
+            best_results[v] = mean_iu_classes[i]
+
     net.train()
     criterion.cuda()    
 

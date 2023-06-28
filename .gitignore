@@ -1,7 +1,9 @@
 awesome-semantic-segmentation-pytorch/
 logs/
 .vscode/
+.neptune/
 dataset.zip
 __MACOSX/
 __pycache__/
 exp/
+*.gv
