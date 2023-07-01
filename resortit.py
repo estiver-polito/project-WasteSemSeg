@@ -6,8 +6,8 @@ from torch.utils import data
 import numpy as np
 from config import cfg
 
-processed_train_path = os.path.join(cfg.DATA.DATA_PATH, 'train')
-processed_val_path = os.path.join(cfg.DATA.DATA_PATH, 'val')
+processed_train_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),cfg.DATA.DATA_PATH, 'train')
+processed_val_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),cfg.DATA.DATA_PATH, 'val')
 
 
 def default_loader(path):
@@ -30,7 +30,7 @@ def make_dataset(mode):
             item = (os.path.join(processed_val_img_path, img_name),
                     os.path.join(processed_val_mask_path + '/labels/val/', img_name))
             images.append(item)
-    return images[:100]
+    return images
 
 
 class resortit(data.Dataset):

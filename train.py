@@ -37,12 +37,16 @@ exp_name = cfg.TRAIN.EXP_NAME
 device = ""
 log_txt = cfg.TRAIN.EXP_LOG_PATH + '/' + exp_name + '.txt'
 writer = SummaryWriter(cfg.TRAIN.EXP_PATH+ '/' + exp_name)
-tipo= "multiclass" if cfg.DATA.NUM_CLASSES > 1 else "binary"  
+attr_map = dict(item.strip().split('=', 1) for item in sys.argv[1:])
+cfg.TRAIN.MAX_EPOCH = int(attr_map['epochs'])
+cfg.CONFIG.MODEL = attr_map['model']
+cfg.DATA.NUM_CLASSES = int(attr_map['classes'])
+cfg.TRAIN.BATCH_SIZE = cfg.VAL.BATCH_SIZE = int(attr_map['batch'])
 
 run = neptune.init_run(
-    custom_run_id= "{}_{}_{}".format(cfg.CONFIG.MODEL,tipo,cfg.TRAIN.MAX_EPOCH),
+    custom_run_id= "{}_{}_{}".format(attr_map['model'],cfg.DATA.NUM_CLASSES,attr_map['epochs']),
     project="stiver/waste-segmentation",  # replace with your own (see instructions below)
-    api_token=sys.argv[1],
+    api_token=attr_map['token'],
 )
 
 
@@ -81,7 +85,8 @@ def check_image(image,mask):
 
 def main():
 
-    cfg_file = open('./config.py',"r")  
+    
+    cfg_file = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'config.py'),"r")  
     cfg_lines = cfg_file.readlines()
     
     with open(log_txt, 'a') as f:

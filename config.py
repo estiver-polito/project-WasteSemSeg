@@ -19,7 +19,7 @@ __C.VIS = edict()
 #------------------------------DATA------------------------
 
 __C.DATA.DATASET = 'city' # dataset
-__C.DATA.DATA_PATH = './dataset'
+__C.DATA.DATA_PATH = 'dataset'
 __C.DATA.NUM_CLASSES = 5
 __C.DATA.IGNORE_LABEL = 255
 __C.DATA.IGNORE_LABEL_TO_TRAIN_ID = 19 # 255->19
@@ -38,7 +38,7 @@ __C.TRAIN.PRETRAINED_ENCODER = '' # Path of the pretrained encoder
 
 # input setting
 
-__C.TRAIN.BATCH_SIZE = 5 #imgs
+__C.TRAIN.BATCH_SIZE = 16 #imgs
 __C.TRAIN.IMG_SIZE = (224,448)
 
 __C.TRAIN.GPU_ID = [0]
@@ -55,7 +55,7 @@ __C.TRAIN.NUM_EPOCH_LR_DECAY = 1 #epoches
 
 __C.TRAIN.WEIGHT_DECAY = 2e-4
 
-__C.TRAIN.MAX_EPOCH = 5
+__C.TRAIN.MAX_EPOCH = 200
 
 # output 
 __C.TRAIN.PRINT_FREQ = 10
@@ -76,7 +76,7 @@ __C.TRAIN.EXP_LOG_PATH = './logs'
 __C.TRAIN.EXP_PATH = './exp'
 
 #------------------------------VAL------------------------
-__C.VAL.BATCH_SIZE = 5 # imgs
+__C.VAL.BATCH_SIZE = 16 # imgs
 __C.VAL.SAMPLE_RATE = 1
 
 #------------------------------TEST------------------------
