@@ -44,7 +44,6 @@ cfg.DATA.NUM_CLASSES = int(attr_map['classes'])
 cfg.TRAIN.BATCH_SIZE = cfg.VAL.BATCH_SIZE = int(attr_map['batch'])
 
 run = neptune.init_run(
-    custom_run_id= "{}_{}_{}".format(attr_map['model'],cfg.DATA.NUM_CLASSES,attr_map['epochs']),
     project="stiver/waste-segmentation",  # replace with your own (see instructions below)
     api_token=attr_map['token'],
 )
@@ -150,10 +149,10 @@ def main():
         _t['val time'].toc(average=False)
         print('val time of  epoch {}: {:.2f}s'.format(epoch,_t['val time'].diff))
 
-    benchmark(next(iter(val_loader))[0].shape)
+    benchmark()
     
 
-def benchmark(dsize):
+def benchmark():
     
 
     total_flops, _ = get_model_complexity_info(npt_logger.model, (3, 224, 448), as_strings=True,
@@ -180,7 +179,8 @@ def benchmark(dsize):
 
     run[npt_logger.base_namespace]["best-results"] = stringify_unsupported(best_results)
     run[npt_logger.base_namespace]["model-features"] = stringify_unsupported(features)
-    del run["training/parameters/"]
+    
+
     run.stop
     # print('[mean iu %.4f]' % (best_results['total']))
     # print("Performance {} GFlops".format(float(total_flops.split(" ")[0]) * 2))
@@ -303,12 +303,13 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
             # flops, params = get_model_complexity_info(net, (3, 224, 448), as_strings=True,
             #                             print_per_layer_stat=False, verbose=False)
     
-    run[npt_logger.base_namespace]["validation/epoch/mean_iou"].append(iou_/len(val_loader))
-    
-    if cfg.DATA.NUM_CLASSES > 1:
-        for i,v in enumerate(list(best_results.keys())[:-1]):
-            run[npt_logger.base_namespace]["validation/epoch/{}_iou".format(v)].append(mean_iu_classes[i])
-            best_results[v] = mean_iu_classes[i]
+    if epoch > 0:
+        run[npt_logger.base_namespace]["validation/epoch/mean_iou"].append(iou_/len(val_loader))
+        
+        if cfg.DATA.NUM_CLASSES > 1:
+            for i,v in enumerate(list(best_results.keys())[:-1]):
+                run[npt_logger.base_namespace]["validation/epoch/{}_iou".format(v)].append(mean_iu_classes[i])
+                best_results[v] = mean_iu_classes[i]
 
     net.train()
     criterion.cuda()    
