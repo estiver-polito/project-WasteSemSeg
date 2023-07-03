@@ -78,7 +78,7 @@ class MixSoftmaxCrossEntropyLoss(nn.CrossEntropyLoss):
     def _aux_forward(self, *inputs, **kwargs):
         *preds, target = tuple(inputs)
 
-        if len(np.unique(target)) == 2:
+        if len(np.unique(target.cpu())) == 2:
             preds = [ pred.squeeze_(1) for pred in preds]
             target = target.to(torch.float)
         

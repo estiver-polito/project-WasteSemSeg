@@ -30,7 +30,7 @@ def make_dataset(mode):
             item = (os.path.join(processed_val_img_path, img_name),
                     os.path.join(processed_val_mask_path + '/labels/val/', img_name))
             images.append(item)
-    return images
+    return images[:100]
 
 
 class resortit(data.Dataset):

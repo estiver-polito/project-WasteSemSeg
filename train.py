@@ -203,6 +203,7 @@ def train(train_loader, net, criterion, optimizer, epoch):
 
         optimizer.zero_grad()
         outputs = net(inputs)
+        
         if cfg.CONFIG.MODEL == "enet" and cfg.DATA.NUM_CLASSES == 1 :
             loss = criterion(outputs, labels.unsqueeze(1).float())
         else:
@@ -233,9 +234,7 @@ def train(train_loader, net, criterion, optimizer, epoch):
 def validate(val_loader, net, criterion, optimizer, epoch, restore):
     net.eval()
     criterion.cpu()
-    input_batches = []
-    output_batches = []
-    label_batches = []
+    valid_losses = []
     iou_ = 0.0
     
     iou_sum_classes = [0.0] * cfg.DATA.NUM_CLASSES
@@ -246,12 +245,21 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
         inputs = inputs.to(device)
         labels = labels.to(device)
        
-        # inputs = Variable(inputs, volatile=True).cuda()
-        # labels = Variable(labels, volatile=True).cuda()
+        
         outputs = net(inputs)
+
+        with torch.no_grad():
+            if cfg.CONFIG.MODEL == "enet" and cfg.DATA.NUM_CLASSES == 1 :
+                los = criterion(outputs, labels.unsqueeze(1).float())
+            else:
+                los = criterion(outputs, labels)
+            
+            valid_losses.append(los.item())
         
         if not cfg.CONFIG.MODEL == "enet":
             outputs = outputs[0]
+
+       
         
         #metric.update(outputs, labels)
         #outputs,_,_,_ = net(inputs)
@@ -289,7 +297,7 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
         print('[mean iu %.4f]' % (iou_/len(val_loader) ))
     
         if iou_/len(val_loader) > best_results["total"]:
-            best_iou = iou_/len(val_loader)
+
         
             for i,v in enumerate(list(best_results.keys())[:-1]):
                 best_results[v] = mean_iu_classes[i]
@@ -298,14 +306,12 @@ def validate(val_loader, net, criterion, optimizer, epoch, restore):
             
             npt_logger.save_model("model")
             
-            
 
-            # flops, params = get_model_complexity_info(net, (3, 224, 448), as_strings=True,
-            #                             print_per_layer_stat=False, verbose=False)
     
     if epoch > 0:
         run[npt_logger.base_namespace]["validation/epoch/mean_iou"].append(iou_/len(val_loader))
-        
+        run[npt_logger.base_namespace]["validation/epoch/loss"].append(np.mean(valid_losses))
+   
         if cfg.DATA.NUM_CLASSES > 1:
             for i,v in enumerate(list(best_results.keys())[:-1]):
                 run[npt_logger.base_namespace]["validation/epoch/{}_iou".format(v)].append(mean_iu_classes[i])
